@@ -14,6 +14,10 @@ services:
       CASS_DAEMON_LABEL: ${DAEMON_LABEL:?member.env needs DAEMON_LABEL}
       CASS_DAEMON_NAME: ${DAEMON_NAME:?member.env needs DAEMON_NAME}
       CASS_HOUSE_PERSON: ${OWNER_USERNAME:?member.env needs OWNER_USERNAME}
+      # The house's origin note, kept in their standing prompt (it's in the mounted member folder).
+      CASS_DAEMON_ORIGIN_PATH: /member/origin.md
+      # How they sound, in words the house writes with them (also in the member folder).
+      CASS_DAEMON_VOICE_PATH: /member/voice.md
       DATA_DIR: /data
       HOST: 127.0.0.1
       PORT: ${MEMBER_PORT:?member.env needs MEMBER_PORT}
@@ -21,6 +25,10 @@ services:
       # Quiet: chat only. Nothing runs on its own until a lever says so.
       CASS_PROFILE: quiet
       CASS_FEATURE_BABELR: ${CASS_FEATURE_BABELR:-0}
+      # Visible thinking tags: Cass's witness habit; a member can turn them off.
+      CASS_FEATURE_METACOG_TAGS: ${CASS_FEATURE_METACOG_TAGS:-1}
+      # Kohl's blog in chat (blog_list / blog_read / blog_keep), once posts are imported.
+      CASS_FEATURE_KOHL_BLOG: ${CASS_FEATURE_KOHL_BLOG:-0}
       CASS_FEATURE_SCHEDULER: '0'
       CASS_FEATURE_AUTONOMOUS_SCHEDULING: '0'
       CASS_FEATURE_JOB_GOAL_REFINEMENT: '0'
