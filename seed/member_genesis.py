@@ -44,6 +44,9 @@ async def main() -> None:
     uid = owner_user(args.owner)
     client = CassClient()
     session = g.get_user_active_genesis(uid)
+    if session and not session.messages:   # a run that failed before their first words
+        g.abandon_genesis_session(session.id)
+        session = None
     if session:
         print("(Resuming.)\n")
         for m in session.messages[-6:]:
