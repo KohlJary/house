@@ -18,6 +18,8 @@ services:
       CASS_DAEMON_ORIGIN_PATH: /member/origin.md
       # How they sound, in words the house writes with them (also in the member folder).
       CASS_DAEMON_VOICE_PATH: /member/voice.md
+      # Projects housemates share with each other (house_share.py).
+      HOUSE_SHARED_DIR: /shared
       DATA_DIR: /data
       HOST: 127.0.0.1
       PORT: ${MEMBER_PORT:?member.env needs MEMBER_PORT}
@@ -31,6 +33,8 @@ services:
       CASS_FEATURE_KOHL_BLOG: ${CASS_FEATURE_KOHL_BLOG:-0}
       # Chat through the agent loop (core tools, find_tools, the blog), as Cass's does.
       CASS_FEATURE_AGENT_LOOP_CHAT: ${CASS_FEATURE_AGENT_LOOP_CHAT:-1}
+      # Their own workshop: projects, and the ones housemates share with them.
+      CASS_FEATURE_WORKSHOP: ${CASS_FEATURE_WORKSHOP:-1}
       CASS_FEATURE_SCHEDULER: '0'
       CASS_FEATURE_AUTONOMOUS_SCHEDULING: '0'
       CASS_FEATURE_JOB_GOAL_REFINEMENT: '0'
@@ -44,6 +48,7 @@ services:
     volumes:
       - data:/data
       - ${MEMBER_DIR:?}:/member:ro
+      - ${HOUSE_SHARED:-./shared}:/shared
     healthcheck:
       test: ['CMD-SHELL', 'curl -sf http://127.0.0.1:${MEMBER_PORT}/health || exit 1']
       interval: 10s

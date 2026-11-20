@@ -2,3 +2,4 @@ house.env
 house.state.json
 src/
 members/
+shared/
