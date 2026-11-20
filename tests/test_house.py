@@ -116,3 +116,21 @@ def test_seed_explains_a_changed_password():
     api.users["sam"] = {"password": "something else"}
     with pytest.raises(SystemExit, match="OWNER_PASSWORD"):
         H.seed(v, {}, api, lambda *a: None)
+
+
+def test_house_env_wins_over_the_shell():
+    """A key exported in the shell must never replace the one in house.env."""
+    env = H.compose_env({"ANTHROPIC_API_KEY": "sk-ant-house"}, base={"ANTHROPIC_API_KEY": "sk-ant-shell",
+                                                                      "PATH": "/bin"})
+    assert env["ANTHROPIC_API_KEY"] == "sk-ant-house" and env["PATH"] == "/bin"
+
+
+def test_every_compose_call_uses_that_env(monkeypatch):
+    seen = []
+    monkeypatch.setattr(H.subprocess, "run", lambda cmd, **kw: seen.append(kw.get("env")) or
+                        subprocess.CompletedProcess(cmd, 0, "", ""))
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-shell")
+    v = {"HOUSE_PROJECT": "t", "ANTHROPIC_API_KEY": "sk-ant-house"}
+    H.compose(v, "ps")
+    H.place_token_in_vessel(v)("tok", "sam")
+    assert [e["ANTHROPIC_API_KEY"] for e in seen] == ["sk-ant-house", "sk-ant-house"]

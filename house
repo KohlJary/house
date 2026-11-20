@@ -26,7 +26,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
-from http.cookiejar import CookieJar
+from http.cookiejar import CookieJar, DefaultCookiePolicy
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -203,9 +203,19 @@ def fetch_sources(run=subprocess.run) -> None:
 
 # ---------------------------------------------------------------- compose
 
+def compose_env(values: dict[str, str], base=None) -> dict[str, str]:
+    """The environment for docker compose: house.env wins over the shell.
+
+    Compose fills ${VAR} from the shell before --env-file, so a key exported in your
+    shell (say, ANTHROPIC_API_KEY for other work) would quietly replace the one in
+    house.env. Here house.env always decides.
+    """
+    return {**(os.environ if base is None else base), **values}
+
+
 def compose(values: dict[str, str], *args: str, check: bool = True, capture: bool = False):
     cmd = ["docker", "compose", "-p", values["HOUSE_PROJECT"], "--env-file", str(ENV_FILE), *args]
-    r = subprocess.run(cmd, cwd=HERE, text=True, capture_output=capture)
+    r = subprocess.run(cmd, cwd=HERE, text=True, capture_output=capture, env=compose_env(values))
     if check and r.returncode != 0:
         tail = (r.stderr or "")[-1500:] if capture else ""
         raise HouseError(f"docker compose {' '.join(args)} failed.\n{tail}\nSee ./house logs for more.")
@@ -234,7 +244,10 @@ class Babelr:
 
     def __init__(self, base: str):
         self.base = base.rstrip("/")
-        self.op = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(CookieJar()))
+        # Babelr marks its session cookie Secure in production. Browsers send that to
+        # http://localhost anyway; Python's cookie jar doesn't unless told to.
+        jar = CookieJar(DefaultCookiePolicy(secure_protocols=("https", "wss", "http")))
+        self.op = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
 
     def call(self, method: str, path: str, body=None, token: str | None = None, ok=(200, 201)):
         r = urllib.request.Request(self.base + path, method=method,
@@ -291,7 +304,7 @@ def seed(values: dict[str, str], state: dict, api: Babelr, place_token) -> dict:
         else:
             code, data = api.call("POST", "/agents", {
                 "username": label, "displayName": name, "kind": "agent",
-                "dmPolicy": "everyone"})
+                "dmPolicy": "members_of_shared_servers"})
             if code not in (200, 201):
                 raise HouseError(f"Couldn't create @{label} ({code}: {data.get('error')}).")
             state["agent_id"] = data.get("id") or data.get("agent", {}).get("id")
@@ -315,7 +328,7 @@ def place_token_in_vessel(values: dict[str, str]):
         r = subprocess.run(
             ["docker", "compose", "-p", values["HOUSE_PROJECT"], "--env-file", str(ENV_FILE),
              "exec", "-T", "vessel", "python", "/house/vessel_seed.py", "--owner", owner],
-            cwd=HERE, input=token + "\n", text=True, capture_output=True)
+            cwd=HERE, input=token + "\n", text=True, capture_output=True, env=compose_env(values))
         if r.returncode != 0:
             raise HouseError(f"Couldn't hand the token to the vessel:\n{r.stderr[-1200:]}")
         say(r.stdout.strip())
