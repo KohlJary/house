@@ -63,8 +63,16 @@ services:
       TZ: ${HOUSE_TZ:-UTC}
       # A new daemon starts quiet: chat and Babelr, nothing that runs on its own.
       # Turn things on one lever at a time (CASS_FEATURE_<NAME>=1 in house.env).
-      CASS_PROFILE: quiet
-      CASS_FEATURE_BABELR: '1'
+      CASS_PROFILE: ${CASS_PROFILE:-quiet}
+      CASS_FEATURE_BABELR: ${CASS_FEATURE_BABELR:-1}
+      # The quiet profile still leaves these on; turn one on with CASS_FEATURE_<NAME>=1 in house.env.
+      CASS_FEATURE_SCHEDULER: ${CASS_FEATURE_SCHEDULER:-0}
+      CASS_FEATURE_AUTONOMOUS_SCHEDULING: ${CASS_FEATURE_AUTONOMOUS_SCHEDULING:-0}
+      CASS_FEATURE_JOB_GOAL_REFINEMENT: ${CASS_FEATURE_JOB_GOAL_REFINEMENT:-0}
+      CASS_FEATURE_COHERENCE_MONITOR: ${CASS_FEATURE_COHERENCE_MONITOR:-0}
+      CASS_FEATURE_TTS: ${CASS_FEATURE_TTS:-0}
+      CASS_FEATURE_FACE_ID: ${CASS_FEATURE_FACE_ID:-0}
+      CASS_FEATURE_VOICE_ID: ${CASS_FEATURE_VOICE_ID:-0}
       BABELR_URL: http://babelr:3000
       BABELR_SERVER: ${HOUSE_SERVER:-House}
       BABELR_POLL_SECONDS: '5'
