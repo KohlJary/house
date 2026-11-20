@@ -29,6 +29,8 @@ services:
       CASS_FEATURE_METACOG_TAGS: ${CASS_FEATURE_METACOG_TAGS:-1}
       # Kohl's blog in chat (blog_list / blog_read / blog_keep), once posts are imported.
       CASS_FEATURE_KOHL_BLOG: ${CASS_FEATURE_KOHL_BLOG:-0}
+      # Chat through the agent loop (core tools, find_tools, the blog), as Cass's does.
+      CASS_FEATURE_AGENT_LOOP_CHAT: ${CASS_FEATURE_AGENT_LOOP_CHAT:-1}
       CASS_FEATURE_SCHEDULER: '0'
       CASS_FEATURE_AUTONOMOUS_SCHEDULING: '0'
       CASS_FEATURE_JOB_GOAL_REFINEMENT: '0'
