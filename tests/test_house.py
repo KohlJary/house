@@ -153,3 +153,48 @@ def test_a_refused_key_stops_up_before_building():
     assert "refused that API key" in H.check_api_key("sk-ant-bad", opener=refused)
     assert H.check_api_key("sk-ant-x", opener=offline) is None
     assert H.check_api_key("sk-ant-x", opener=lambda r, timeout=None: OK()) is None
+
+
+# ---- members: another daemon in a running house -----------------------------------------
+
+def test_member_slugs_are_folder_names_only():
+    assert H.member_dir("fifth").name == "fifth"
+    for bad in ("Fifth", "x", "../etc", "a b"):
+        with pytest.raises(SystemExit):
+            H.member_dir(bad)
+
+
+def test_a_member_gets_the_next_free_port():
+    taken = {8002, 8003}
+    assert H.free_port(8002, lambda p: p in taken) == 8004
+
+
+def test_the_key_comes_from_an_env_file_without_echo(tmp_path, capsys):
+    f = tmp_path / ".env"
+    f.write_text("OTHER=1\nANTHROPIC_API_KEY='sk-test'\n")
+    assert H.key_from_file(str(f)) == "sk-test"
+    assert "sk-test" not in capsys.readouterr().out
+    (tmp_path / "none.env").write_text("X=1\n")
+    with pytest.raises(SystemExit):
+        H.key_from_file(str(tmp_path / "none.env"))
+
+
+def test_member_compose_lets_member_env_beat_the_shell(tmp_path, monkeypatch):
+    seen = {}
+
+    def fake_run(cmd, **kw):
+        seen["cmd"], seen["env"] = cmd, kw["env"]
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+    monkeypatch.setattr(H.subprocess, "run", fake_run)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "from-the-shell")
+    values = {"ANTHROPIC_API_KEY": "from-member-env", "MEMBER_DIR": str(tmp_path), "HOUSE_PROJECT": "house-member-x"}
+    H.member_compose(values, "ps")
+    assert seen["env"]["ANTHROPIC_API_KEY"] == "from-member-env"
+    assert "member.compose.yml" in " ".join(seen["cmd"]) and "house-member-x" in seen["cmd"]
+
+
+def test_a_member_starts_unnamed_and_quiet_never_as_cass():
+    compose = (Path(H.HERE) / "member.compose.yml").read_text()
+    assert "CASS_PROFILE: quiet" in compose and "network_mode: host" in compose and "HOST: 127.0.0.1" in compose
+    assert H.PLACEHOLDER_NAME == "Not yet named"
+    assert H.check_daemon_name("Cass")   # genesis can't come out as a house member's name

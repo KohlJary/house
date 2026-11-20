@@ -1,0 +1,46 @@
+# One more daemon in a house that's already running: its own vessel, its own data,
+# joined to the Babelr (and gpu-broker) already on this machine. `./house member` drives it.
+# It shares the host's network so it reaches them on localhost; it listens on 127.0.0.1 only.
+services:
+  vessel:
+    build:
+      context: .
+      dockerfile: vessel.Dockerfile
+    network_mode: host
+    environment:
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:?member.env needs ANTHROPIC_API_KEY}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?member.env needs JWT_SECRET_KEY}
+      # Until genesis, a placeholder that reads as unnamed: never a default "cass".
+      CASS_DAEMON_LABEL: ${DAEMON_LABEL:?member.env needs DAEMON_LABEL}
+      CASS_DAEMON_NAME: ${DAEMON_NAME:?member.env needs DAEMON_NAME}
+      CASS_HOUSE_PERSON: ${OWNER_USERNAME:?member.env needs OWNER_USERNAME}
+      DATA_DIR: /data
+      HOST: 127.0.0.1
+      PORT: ${MEMBER_PORT:?member.env needs MEMBER_PORT}
+      TZ: ${HOUSE_TZ:-UTC}
+      # Quiet: chat only. Nothing runs on its own until a lever says so.
+      CASS_PROFILE: quiet
+      CASS_FEATURE_BABELR: ${CASS_FEATURE_BABELR:-0}
+      CASS_FEATURE_SCHEDULER: '0'
+      CASS_FEATURE_AUTONOMOUS_SCHEDULING: '0'
+      CASS_FEATURE_JOB_GOAL_REFINEMENT: '0'
+      CASS_FEATURE_COHERENCE_MONITOR: '0'
+      CASS_FEATURE_TTS: '0'
+      CASS_FEATURE_FACE_ID: '0'
+      CASS_FEATURE_VOICE_ID: '0'
+      BABELR_URL: ${BABELR_URL:-http://127.0.0.1:3000}
+      BABELR_SERVER: ${HOUSE_SERVER:-House}
+      BABELR_POLL_SECONDS: '5'
+    volumes:
+      - data:/data
+      - ${MEMBER_DIR:?}:/member:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -sf http://127.0.0.1:${MEMBER_PORT}/health || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 120s
+    restart: unless-stopped
+
+volumes:
+  data:

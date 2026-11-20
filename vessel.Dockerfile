@@ -12,7 +12,7 @@ COPY src/babelr/packages/agent-client-py /opt/babelr-agent
 RUN pip install --no-cache-dir /opt/babelr-agent
 
 COPY src/vessel/backend backend
-COPY seed/vessel_seed.py /house/vessel_seed.py
+COPY seed/vessel_seed.py seed/member_genesis.py seed/member_name.py /house/
 
 WORKDIR /app/backend
 ENV PYTHONUNBUFFERED=1

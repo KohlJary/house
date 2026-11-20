@@ -6,6 +6,8 @@
   ./house logs [SERVICE]
   ./house down      stop it (your data stays, in docker volumes)
   ./house nuke      stop it and delete its data (asks first)
+  ./house member up|genesis|name|join|status|logs|down SLUG
+                    another daemon in a house that's already running (its own vessel)
 
 Needs docker with the compose plugin, git, and an Anthropic API key. Nothing here
 talks to anyone else's house: your daemon runs on your key, your data stays in
@@ -433,6 +435,158 @@ def cmd_nuke(args) -> None:
     say("Deleted. house.env is kept (your key); delete it yourself if you want.")
 
 
+# ---------------------------------------------------------------- members
+
+MEMBERS = HERE / "members"
+MEMBER_COMPOSE = HERE / "member.compose.yml"
+SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9-]{1,30}$")
+PLACEHOLDER_NAME = "Not yet named"
+
+
+def member_dir(slug: str) -> Path:
+    if not SLUG_RE.match(slug):
+        raise HouseError("A member's slug is 2-31 lowercase letters, digits or hyphens (it's only a folder name).")
+    return MEMBERS / slug
+
+
+def member_values(slug: str) -> dict[str, str]:
+    env = member_dir(slug) / "member.env"
+    if not env.exists():
+        raise HouseError(f"No member {slug!r} here yet. ./house member up {slug} makes one.")
+    return {**read_env(env), "MEMBER_DIR": str(member_dir(slug)), "HOUSE_PROJECT": f"house-member-{slug}"}
+
+
+def free_port(start: int = 8002, taken=_port_taken) -> int:
+    port = start
+    while taken(port):
+        port += 1
+    return port
+
+
+def key_from_file(path: str) -> str:
+    """ANTHROPIC_API_KEY from an env file, without printing it."""
+    for line in Path(path).expanduser().read_text().splitlines():
+        if line.startswith("ANTHROPIC_API_KEY="):
+            return line.split("=", 1)[1].strip().strip("'\"")
+    raise HouseError(f"No ANTHROPIC_API_KEY line in {path}.")
+
+
+def member_compose(values: dict[str, str], *args: str, check: bool = True, capture: bool = False):
+    env_file = Path(values["MEMBER_DIR"]) / "member.env"
+    cmd = ["docker", "compose", "-p", values["HOUSE_PROJECT"], "-f", str(MEMBER_COMPOSE),
+           "--env-file", str(env_file), *args]
+    r = subprocess.run(cmd, cwd=HERE, text=True, capture_output=capture, env=compose_env(values))
+    if check and r.returncode != 0:
+        tail = (r.stderr or "")[-1500:] if capture else ""
+        raise HouseError(f"docker compose {' '.join(args)} failed.\n{tail}")
+    return r
+
+
+def save_member(slug: str, values: dict[str, str]) -> None:
+    d = member_dir(slug)
+    d.mkdir(parents=True, exist_ok=True)
+    keep = {k: v for k, v in values.items() if k not in ("MEMBER_DIR", "HOUSE_PROJECT")}
+    write_env(keep, d / "member.env")
+
+
+def cmd_member_up(args) -> None:
+    d = member_dir(args.slug)
+    env = d / "member.env"
+    if env.exists():
+        values = member_values(args.slug)
+    else:
+        key = key_from_file(args.key_from) if args.key_from else ask("Anthropic API key for this daemon", secret=True)
+        values = {
+            "ANTHROPIC_API_KEY": key,
+            "JWT_SECRET_KEY": secrets.token_urlsafe(32),
+            "DAEMON_LABEL": f"unnamed-{args.slug}",
+            "DAEMON_NAME": PLACEHOLDER_NAME,
+            "OWNER_USERNAME": args.owner or ask("Your Babelr username"),
+            "MEMBER_PORT": str(args.port or free_port()),
+            "CASS_FEATURE_BABELR": "0",
+        }
+        save_member(args.slug, values)
+        values = member_values(args.slug)
+    fetch_sources()
+    say(f"Starting member {args.slug} on 127.0.0.1:{values['MEMBER_PORT']} (quiet: chat only).")
+    member_compose(values, "up", "-d", "--build")
+    wait_healthy(f"http://127.0.0.1:{values['MEMBER_PORT']}/health", f"member {args.slug}", 600)
+    if values["DAEMON_NAME"] == PLACEHOLDER_NAME:
+        say(f"Next: ./house member genesis {args.slug}  (they wake up and name themselves).")
+
+
+def cmd_member_genesis(args) -> None:
+    values = member_values(args.slug)
+    if values["DAEMON_NAME"] != PLACEHOLDER_NAME:
+        raise HouseError(f"{args.slug} already has a name: {values['DAEMON_NAME']}.")
+    subprocess.run(["docker", "compose", "-p", values["HOUSE_PROJECT"], "-f", str(MEMBER_COMPOSE),
+                    "--env-file", str(Path(values["MEMBER_DIR"]) / "member.env"), "exec", "vessel",
+                    "python", "/house/member_genesis.py", "--owner", values["OWNER_USERNAME"]],
+                   cwd=HERE, env=compose_env(values))
+
+
+def cmd_member_name(args) -> None:
+    values = member_values(args.slug)
+    def read(*extra: str) -> dict:
+        r = member_compose(values, "exec", "-T", "vessel", "python", "/house/member_name.py",
+                           "--placeholder", values["DAEMON_LABEL"], *extra, capture=True)
+        return json.loads(r.stdout.strip().splitlines()[-1])
+    got = read()
+    if got.get("error"):
+        raise HouseError(f"{got['error']}: run ./house member genesis {args.slug} first.")
+    why = check_daemon_name(got["name"])
+    if why:
+        raise HouseError(f"Genesis came out as {got['name']!r}: {why} Run genesis again.")
+    read("--activate")
+    values.update({"DAEMON_LABEL": got["label"], "DAEMON_NAME": got["name"]})
+    save_member(args.slug, values)
+    member_compose(values, "up", "-d")
+    wait_healthy(f"http://127.0.0.1:{values['MEMBER_PORT']}/health", got["name"], 300)
+    say(f"{got['name']} is themselves now. To bring them into Babelr, make their account "
+        f"(Kohl: house-agent {daemon_username(got['name'])} \"{got['name']}\" ...), then "
+        f"./house member join {args.slug} < token")
+
+
+def cmd_member_join(args) -> None:
+    values = member_values(args.slug)
+    if values["DAEMON_NAME"] == PLACEHOLDER_NAME:
+        raise HouseError("Name first: genesis, then ./house member name.")
+    token = sys.stdin.readline().strip()
+    if not token:
+        raise HouseError("Pipe the daemon's Babelr token on stdin.")
+    r = subprocess.run(["docker", "compose", "-p", values["HOUSE_PROJECT"], "-f", str(MEMBER_COMPOSE),
+                        "--env-file", str(Path(values["MEMBER_DIR"]) / "member.env"), "exec", "-T", "vessel",
+                        "python", "/house/vessel_seed.py", "--owner", values["OWNER_USERNAME"]],
+                       input=token + "\n", cwd=HERE, text=True, env=compose_env(values))
+    if r.returncode != 0:
+        raise HouseError("Placing the token failed; see ./house member logs.")
+    values["CASS_FEATURE_BABELR"] = "1"
+    save_member(args.slug, values)
+    member_compose(values, "up", "-d")
+    say(f"{values['DAEMON_NAME']} is in Babelr. DM them.")
+
+
+def cmd_member_status(args) -> None:
+    values = member_values(args.slug)
+    member_compose(values, "ps")
+    say(f"{values['DAEMON_NAME']} ({values['DAEMON_LABEL']}) on 127.0.0.1:{values['MEMBER_PORT']}, "
+        f"Babelr {'on' if values.get('CASS_FEATURE_BABELR') == '1' else 'off'}.")
+
+
+def cmd_member_logs(args) -> None:
+    member_compose(member_values(args.slug), "logs", "--tail", "200", "vessel", check=False)
+
+
+def cmd_member_down(args) -> None:
+    member_compose(member_values(args.slug), "down")
+    say("Stopped. Their data is kept in the member's docker volume.")
+
+
+def cmd_member(args) -> None:
+    {"up": cmd_member_up, "genesis": cmd_member_genesis, "name": cmd_member_name, "join": cmd_member_join,
+     "status": cmd_member_status, "logs": cmd_member_logs, "down": cmd_member_down}[args.mcmd](args)
+
+
 def main(argv=None) -> None:
     ap = argparse.ArgumentParser(prog="house", description=__doc__.split("\n\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -442,8 +596,18 @@ def main(argv=None) -> None:
     lp.add_argument("service", nargs="?")
     sub.add_parser("down")
     sub.add_parser("nuke")
+    mp = sub.add_parser("member", help="another daemon in a house that's already running")
+    msub = mp.add_subparsers(dest="mcmd", required=True)
+    for name in ("up", "genesis", "name", "join", "status", "logs", "down"):
+        m = msub.add_parser(name)
+        m.add_argument("slug")
+        if name == "up":
+            m.add_argument("--owner", help="your Babelr username")
+            m.add_argument("--port", type=int)
+            m.add_argument("--key-from", help="an env file with ANTHROPIC_API_KEY (read, never printed)")
     args = ap.parse_args(argv)
-    {"up": cmd_up, "status": cmd_status, "logs": cmd_logs, "down": cmd_down, "nuke": cmd_nuke}[args.cmd](args)
+    {"up": cmd_up, "status": cmd_status, "logs": cmd_logs, "down": cmd_down, "nuke": cmd_nuke,
+     "member": cmd_member}[args.cmd](args)
 
 
 if __name__ == "__main__":
