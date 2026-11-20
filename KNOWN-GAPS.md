@@ -24,10 +24,13 @@ project of its own on ports 13300/18300, nowhere near a live house), and what we
 
 ## Open
 
-- **About 49 background prompts say "You are Cass" outright** (journals, dreams, research, the wiki,
-  Wonderland). A new house runs with all of them off (`CASS_PROFILE=quiet`). Turning one on in a
-  stranger's house today would tell their daemon it's Cass. `tools/prompt_names.py` covers the chat
-  prompt only.
+- **What's left of the daemon being called Cass.** The background prompts (journals, dreams, research,
+  the wiki, Wonderland and the rest) now say the house's own names (vessel 7ae065a9; Cass's prompts
+  were checked byte for byte, 1623 strings, unchanged). Still saying Cass: the "Cass is preparing to
+  introduce herself" status message (a stranger would see it), docstrings and log lines, and the
+  voice guard's refusal pattern, which names Cass. The dream and Wonderland prompts say "she/her" for
+  every daemon. The self-model's conversation-length count looks for "Cass:" lines, so it may
+  undercount in another house.
 - **Babelr's Cass plugins are named for Cass.** They're hidden in a house without Cass's vessel token
   now (babelr 4f20dfa), but turning them on for another daemon would still say "Cass's room".
 - **Onboarding's Next button** stays disabled until you type a display name, though it shows your
