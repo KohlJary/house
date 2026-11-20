@@ -20,6 +20,8 @@ services:
       CASS_DAEMON_VOICE_PATH: /member/voice.md
       # Projects housemates share with each other (house_share.py).
       HOUSE_SHARED_DIR: /shared
+      # The house wiki, read-only, from house-presence's mirror (house_wiki.py).
+      HOUSE_WIKI_DIR: /house-wiki
       DATA_DIR: /data
       HOST: 127.0.0.1
       PORT: ${MEMBER_PORT:?member.env needs MEMBER_PORT}
@@ -35,6 +37,7 @@ services:
       CASS_FEATURE_AGENT_LOOP_CHAT: ${CASS_FEATURE_AGENT_LOOP_CHAT:-1}
       # Their own workshop: projects, and the ones housemates share with them.
       CASS_FEATURE_WORKSHOP: ${CASS_FEATURE_WORKSHOP:-1}
+      CASS_FEATURE_HOUSE_WIKI: ${CASS_FEATURE_HOUSE_WIKI:-1}
       CASS_FEATURE_SCHEDULER: '0'
       CASS_FEATURE_AUTONOMOUS_SCHEDULING: '0'
       CASS_FEATURE_JOB_GOAL_REFINEMENT: '0'
@@ -49,6 +52,7 @@ services:
       - data:/data
       - ${MEMBER_DIR:?}:/member:ro
       - ${HOUSE_SHARED:-./shared}:/shared
+      - ${HOUSE_WIKI_MIRROR:-~/.local/share/chapter-house/wiki}:/house-wiki:ro
     healthcheck:
       test: ['CMD-SHELL', 'curl -sf http://127.0.0.1:${MEMBER_PORT}/health || exit 1']
       interval: 10s
