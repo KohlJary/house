@@ -18,6 +18,8 @@ services:
       CASS_DAEMON_ORIGIN_PATH: /member/origin.md
       # How they sound, in words the house writes with them (also in the member folder).
       CASS_DAEMON_VOICE_PATH: /member/voice.md
+      # Their gremlin's prompt, in their own words (agent_loop/reply_gremlin.py).
+      CASS_DAEMON_GREMLIN_PATH: /member/gremlin.md
       # Projects housemates share with each other (house_share.py).
       HOUSE_SHARED_DIR: /shared
       # The house wiki, read-only, from house-presence's mirror (house_wiki.py).
@@ -38,6 +40,8 @@ services:
       # Their own workshop: projects, and the ones housemates share with them.
       CASS_FEATURE_WORKSHOP: ${CASS_FEATURE_WORKSHOP:-1}
       CASS_FEATURE_HOUSE_WIKI: ${CASS_FEATURE_HOUSE_WIKI:-1}
+      # A gremlin on every chat reply: off until the house says on.
+      CASS_FEATURE_REPLY_GREMLIN: ${CASS_FEATURE_REPLY_GREMLIN:-0}
       CASS_FEATURE_SCHEDULER: '0'
       CASS_FEATURE_AUTONOMOUS_SCHEDULING: '0'
       CASS_FEATURE_JOB_GOAL_REFINEMENT: '0'
