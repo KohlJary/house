@@ -1,0 +1,87 @@
+# The house: Babelr (where you and your daemon talk), the vessel (the daemon), and Postgres.
+# Run it with `./house up`, which writes house.env and seeds the accounts. Plain
+# `docker compose` works too once house.env exists.
+name: ${HOUSE_PROJECT:-house}
+
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: babelr
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?run ./house up first}
+      POSTGRES_DB: babelr
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U babelr']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  babelr:
+    build: ./src/babelr
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - '${HOUSE_BIND:-127.0.0.1}:${BABELR_PORT:-3000}:3000'
+    environment:
+      DATABASE_URL: postgresql://babelr:${POSTGRES_PASSWORD}@postgres:5432/babelr
+      SESSION_SECRET: ${SESSION_SECRET:?run ./house up first}
+      BABELR_DOMAIN: ${BABELR_DOMAIN:-localhost:3000}
+      NODE_ENV: production
+      PORT: 3000
+      HOST: 0.0.0.0
+    volumes:
+      - uploads:/app/uploads
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -sf http://localhost:3000/health || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+    restart: unless-stopped
+
+  vessel:
+    build:
+      context: .
+      dockerfile: vessel.Dockerfile
+    depends_on:
+      babelr:
+        condition: service_healthy
+    ports:
+      - '${HOUSE_BIND:-127.0.0.1}:${VESSEL_PORT:-8000}:8000'
+    environment:
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:?run ./house up first}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?run ./house up first}
+      CASS_DAEMON_LABEL: ${DAEMON_LABEL:?run ./house up first}
+      CASS_DAEMON_NAME: ${DAEMON_NAME:?run ./house up first}
+      DATA_DIR: /data
+      HOST: 0.0.0.0
+      PORT: 8000
+      TZ: ${HOUSE_TZ:-UTC}
+      # A new daemon starts quiet: chat and Babelr, nothing that runs on its own.
+      # Turn things on one lever at a time (CASS_FEATURE_<NAME>=1 in house.env).
+      CASS_PROFILE: quiet
+      CASS_FEATURE_BABELR: '1'
+      BABELR_URL: http://babelr:3000
+      BABELR_SERVER: ${HOUSE_SERVER:-House}
+      BABELR_POLL_SECONDS: '5'
+    env_file:
+      - path: house.env
+        required: false
+    volumes:
+      - vessel-data:/data
+    healthcheck:
+      test: ['CMD-SHELL', 'curl -sf http://localhost:8000/health || exit 1']
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 120s
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  uploads:
+  vessel-data:

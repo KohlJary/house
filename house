@@ -1,0 +1,419 @@
+#!/usr/bin/env python3
+"""house: run a house on your own machine. Babelr, the vessel, and a new daemon of your own.
+
+  ./house up        first run: asks a few questions, builds, starts, seeds the accounts
+  ./house status    what's running, and where to open it
+  ./house logs [SERVICE]
+  ./house down      stop it (your data stays, in docker volumes)
+  ./house nuke      stop it and delete its data (asks first)
+
+Needs docker with the compose plugin, git, and an Anthropic API key. Nothing here
+talks to anyone else's house: your daemon runs on your key, your data stays in
+docker volumes on this machine.
+"""
+from __future__ import annotations
+
+import argparse
+import getpass
+import json
+import os
+import re
+import secrets
+import shutil
+import socket
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.request
+from http.cookiejar import CookieJar
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+ENV_FILE = HERE / "house.env"
+STATE_FILE = HERE / "house.state.json"
+SRC = HERE / "src"
+SOURCES = {
+    "babelr": "https://github.com/KohlJary/babelr.git",
+    "vessel": "https://github.com/KohlJary/project-cass.git",
+}
+AGENT_SCOPES = ["channels:read", "channels:post", "dms:read", "dms:post", "dms:open", "keys:write"]
+RESERVED_NAMES = {"cass", "cassandra", "kohl", "robokohl", "daedalus", "claude"}
+USERNAME_RE = re.compile(r"^[a-z0-9_]{3,32}$")
+
+
+class HouseError(SystemExit):
+    """A stop with a plain message, never a stack trace."""
+
+
+def say(msg: str = "") -> None:
+    print(msg, flush=True)
+
+
+# ---------------------------------------------------------------- env file
+
+def read_env(path: Path = ENV_FILE) -> dict[str, str]:
+    if not path.exists():
+        return {}
+    out = {}
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if line and not line.startswith("#") and "=" in line:
+            k, v = line.split("=", 1)
+            out[k.strip()] = v.strip()
+    return out
+
+
+def write_env(values: dict[str, str], path: Path = ENV_FILE) -> None:
+    lines = ["# Written by ./house up. Keep it private: it holds your API key and passwords.",
+             "# Add CASS_FEATURE_<NAME>=1 lines to turn on more of your daemon, then ./house up."]
+    lines += [f"{k}={v}" for k, v in values.items()]
+    path.write_text("\n".join(lines) + "\n")
+    os.chmod(path, 0o600)
+
+
+def daemon_username(name: str) -> str:
+    u = re.sub(r"[^a-z0-9_]", "", name.lower().replace(" ", "_").replace("-", "_"))[:32]
+    return u
+
+
+def check_daemon_name(name: str) -> str | None:
+    """Why a daemon name won't do, or None if it's fine."""
+    name = name.strip()
+    if not name:
+        return "Pick a name."
+    u = daemon_username(name)
+    if not USERNAME_RE.match(u):
+        return "Use 3 to 32 letters, digits, spaces or underscores."
+    if u in RESERVED_NAMES:
+        return (f"{name} is already someone in the house this came from; a new daemon is its own "
+                "self and gets its own name.")
+    return None
+
+
+def ask(prompt: str, default: str = "", secret: bool = False) -> str:
+    if not sys.stdin.isatty():
+        if default:
+            return default
+        raise HouseError(f"{prompt}: no answer (not a terminal). Set it in house.env, or run in a terminal.")
+    shown = f" [{default}]" if default and not secret else ""
+    got = (getpass.getpass(f"{prompt}: ") if secret else input(f"{prompt}{shown}: ")).strip()
+    return got or default
+
+
+def gather_config(existing: dict[str, str], env=os.environ) -> dict[str, str]:
+    """Everything house.env needs. Keeps what's there; asks only for what's missing."""
+    v = dict(existing)
+    if not v.get("ANTHROPIC_API_KEY"):
+        key = env.get("ANTHROPIC_API_KEY") or ask("Your Anthropic API key (console.anthropic.com)", secret=True)
+        if not key.startswith("sk-ant-"):
+            raise HouseError("That doesn't look like an Anthropic API key (they start with sk-ant-).")
+        v["ANTHROPIC_API_KEY"] = key
+    if not v.get("DAEMON_NAME"):
+        while True:
+            name = env.get("HOUSE_DAEMON_NAME") or ask("Your daemon's name (you can't use Cass)")
+            why = check_daemon_name(name)
+            if not why:
+                break
+            if env.get("HOUSE_DAEMON_NAME") or not sys.stdin.isatty():
+                raise HouseError(why)
+            say(f"  {why}")
+        v["DAEMON_NAME"] = name.strip()
+        v["DAEMON_LABEL"] = daemon_username(name)
+    if not v.get("OWNER_USERNAME"):
+        u = env.get("HOUSE_OWNER") or ask("Your username in the house", getpass.getuser().lower())
+        u = u.strip().lower()
+        if not USERNAME_RE.match(u):
+            raise HouseError("Username: 3 to 32 lowercase letters, digits or underscores.")
+        if u == v["DAEMON_LABEL"]:
+            raise HouseError("You and your daemon need different usernames.")
+        v["OWNER_USERNAME"] = u
+    v.setdefault("OWNER_EMAIL", env.get("HOUSE_OWNER_EMAIL") or f"{v['OWNER_USERNAME']}@house.local")
+    v.setdefault("OWNER_PASSWORD", env.get("HOUSE_OWNER_PASSWORD") or secrets.token_urlsafe(15))
+    v.setdefault("POSTGRES_PASSWORD", secrets.token_urlsafe(24))
+    v.setdefault("SESSION_SECRET", secrets.token_urlsafe(48))
+    v.setdefault("JWT_SECRET_KEY", secrets.token_urlsafe(48))
+    for k, d in (("BABELR_PORT", "3000"), ("VESSEL_PORT", "8000"), ("HOUSE_SERVER", "House")):
+        v.setdefault(k, env.get(f"HOUSE_{k}") or env.get(k) or d)
+    v.setdefault("BABELR_DOMAIN", f"localhost:{v['BABELR_PORT']}")
+    v.setdefault("HOUSE_PROJECT", env.get("HOUSE_PROJECT") or "house")
+    return v
+
+
+# ---------------------------------------------------------------- preflight
+
+def preflight(values: dict[str, str], run=subprocess.run, which=shutil.which) -> list[str]:
+    """Every problem we can see before building, in plain words."""
+    problems = []
+    if not which("git"):
+        problems.append("git isn't installed.")
+    if not which("docker"):
+        problems.append("docker isn't installed (https://docs.docker.com/engine/install/).")
+    else:
+        r = run(["docker", "compose", "version"], capture_output=True, text=True)
+        if r.returncode != 0:
+            problems.append("docker is here but the compose plugin isn't (docker compose version failed).")
+        r = run(["docker", "info"], capture_output=True, text=True)
+        if r.returncode != 0:
+            err = (r.stderr or "").lower()
+            if "permission denied" in err:
+                problems.append("docker needs permission: add yourself to the docker group "
+                                "(sudo usermod -aG docker $USER, then log in again).")
+            else:
+                problems.append("docker isn't running (start it: sudo systemctl start docker).")
+    running = _project_running(values.get("HOUSE_PROJECT", "house"), run)
+    for k in ("BABELR_PORT", "VESSEL_PORT"):
+        port = int(values[k])
+        if not running and _port_taken(port):
+            problems.append(f"Port {port} is taken. Set {k}=<another port> in house.env "
+                            f"(or HOUSE_{k}=... for the first run).")
+    return problems
+
+
+def _port_taken(port: int) -> bool:
+    with socket.socket() as s:
+        s.settimeout(0.5)
+        return s.connect_ex(("127.0.0.1", port)) == 0
+
+
+def _project_running(project: str, run=subprocess.run) -> bool:
+    r = run(["docker", "compose", "-p", project, "ps", "-q"], capture_output=True, text=True, cwd=HERE)
+    return r.returncode == 0 and bool(r.stdout.strip())
+
+
+# ---------------------------------------------------------------- sources
+
+def fetch_sources(run=subprocess.run) -> None:
+    SRC.mkdir(exist_ok=True)
+    for name, url in SOURCES.items():
+        dest = SRC / name
+        override = os.environ.get(f"HOUSE_{name.upper()}_SRC")
+        if dest.exists():
+            continue
+        if override:
+            say(f"Using your {name} checkout at {override}")
+            r = run(["git", "clone", "--depth", "1", f"file://{Path(override).resolve()}", str(dest)])
+        else:
+            say(f"Fetching {name} ({url})")
+            r = run(["git", "clone", "--depth", "1", url, str(dest)])
+        if r.returncode != 0:
+            raise HouseError(f"Couldn't fetch {name}. Check your connection, or set HOUSE_{name.upper()}_SRC "
+                             "to a local checkout.")
+
+
+# ---------------------------------------------------------------- compose
+
+def compose(values: dict[str, str], *args: str, check: bool = True, capture: bool = False):
+    cmd = ["docker", "compose", "-p", values["HOUSE_PROJECT"], "--env-file", str(ENV_FILE), *args]
+    r = subprocess.run(cmd, cwd=HERE, text=True, capture_output=capture)
+    if check and r.returncode != 0:
+        tail = (r.stderr or "")[-1500:] if capture else ""
+        raise HouseError(f"docker compose {' '.join(args)} failed.\n{tail}\nSee ./house logs for more.")
+    return r
+
+
+def wait_healthy(url: str, what: str, timeout: float, opener=urllib.request.urlopen) -> None:
+    say(f"Waiting for {what} ...")
+    end = time.monotonic() + timeout
+    while time.monotonic() < end:
+        try:
+            with opener(url, timeout=5) as r:
+                if r.status == 200:
+                    say(f"  {what} is up.")
+                    return
+        except (urllib.error.URLError, ConnectionError, OSError):
+            pass
+        time.sleep(3)
+    raise HouseError(f"{what} didn't come up within {int(timeout)} s. ./house logs shows why.")
+
+
+# ---------------------------------------------------------------- seeding
+
+class Babelr:
+    """The few Babelr calls seeding needs: a logged-in owner (cookie) and agent tokens."""
+
+    def __init__(self, base: str):
+        self.base = base.rstrip("/")
+        self.op = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(CookieJar()))
+
+    def call(self, method: str, path: str, body=None, token: str | None = None, ok=(200, 201)):
+        r = urllib.request.Request(self.base + path, method=method,
+                                   data=json.dumps(body).encode() if body is not None else None)
+        if body is not None:
+            r.add_header("Content-Type", "application/json")
+        if token:
+            r.add_header("Authorization", f"Bearer {token}")
+        try:
+            with (urllib.request.urlopen(r) if token else self.op.open(r)) as res:
+                raw = res.read()
+                return res.status, (json.loads(raw) if raw else None)
+        except urllib.error.HTTPError as e:
+            raw = e.read().decode(errors="replace")
+            try:
+                data = json.loads(raw)
+            except ValueError:
+                data = {"error": raw[:300]}
+            return e.code, data
+
+
+def seed(values: dict[str, str], state: dict, api: Babelr, place_token) -> dict:
+    """Owner account, the server, the daemon's agent and its token. Idempotent: state says what's done."""
+    owner, email, pw = values["OWNER_USERNAME"], values["OWNER_EMAIL"], values["OWNER_PASSWORD"]
+    if not state.get("owner"):
+        code, data = api.call("POST", "/auth/register", {"username": owner, "email": email, "password": pw})
+        if code not in (200, 201, 409):
+            raise HouseError(f"Couldn't create your account ({code}: {data.get('error')}).")
+        state["owner"] = owner
+    code, data = api.call("POST", "/auth/login", {"email": email, "password": pw})
+    if code != 200:
+        raise HouseError(f"Couldn't log in as {owner} ({code}: {data.get('error')}). If you changed the "
+                         "password in Babelr, put the new one in house.env as OWNER_PASSWORD.")
+    me = api.call("GET", "/auth/me")[1]
+    state["owner_id"] = me["id"]
+
+    if not state.get("server_id"):
+        code, servers = api.call("GET", "/servers")
+        found = [s for s in (servers or []) if s.get("name") == values["HOUSE_SERVER"]]
+        if found:
+            state["server_id"] = found[0]["id"]
+        else:
+            code, data = api.call("POST", "/servers", {"name": values["HOUSE_SERVER"],
+                                                       "description": "Where you and your daemon live."})
+            if code not in (200, 201):
+                raise HouseError(f"Couldn't create the server ({code}: {data.get('error')}).")
+            state["server_id"] = (data.get("id") or data.get("server", {}).get("id"))
+
+    label, name = values["DAEMON_LABEL"], values["DAEMON_NAME"]
+    if not state.get("agent_id"):
+        mine = {a.get("preferredUsername"): a for a in (api.call("GET", "/agents")[1] or [])}
+        if label in mine:
+            state["agent_id"] = mine[label]["id"]
+        else:
+            code, data = api.call("POST", "/agents", {
+                "username": label, "displayName": name, "kind": "agent",
+                "dmPolicy": "everyone"})
+            if code not in (200, 201):
+                raise HouseError(f"Couldn't create @{label} ({code}: {data.get('error')}).")
+            state["agent_id"] = data.get("id") or data.get("agent", {}).get("id")
+    if not state.get("agent_in_server"):
+        code, data = api.call("POST", f"/servers/{state['server_id']}/agents", {"agentId": state["agent_id"]})
+        if code not in (200, 201, 409):
+            raise HouseError(f"Couldn't add @{label} to {values['HOUSE_SERVER']} ({code}: {data.get('error')}).")
+        state["agent_in_server"] = True
+    if not state.get("token_placed"):
+        code, data = api.call("POST", f"/agents/{state['agent_id']}/tokens",
+                              {"name": f"{label} (vessel)", "scopes": AGENT_SCOPES})
+        if code not in (200, 201):
+            raise HouseError(f"Couldn't mint @{label}'s token ({code}: {data.get('error')}).")
+        place_token(data["token"], owner)
+        state["token_placed"] = True
+    return state
+
+
+def place_token_in_vessel(values: dict[str, str]):
+    def place(token: str, owner: str) -> None:
+        r = subprocess.run(
+            ["docker", "compose", "-p", values["HOUSE_PROJECT"], "--env-file", str(ENV_FILE),
+             "exec", "-T", "vessel", "python", "/house/vessel_seed.py", "--owner", owner],
+            cwd=HERE, input=token + "\n", text=True, capture_output=True)
+        if r.returncode != 0:
+            raise HouseError(f"Couldn't hand the token to the vessel:\n{r.stderr[-1200:]}")
+        say(r.stdout.strip())
+    return place
+
+
+def load_state() -> dict:
+    return json.loads(STATE_FILE.read_text()) if STATE_FILE.exists() else {}
+
+
+def save_state(state: dict) -> None:
+    STATE_FILE.write_text(json.dumps(state, indent=2) + "\n")
+    os.chmod(STATE_FILE, 0o600)
+
+
+# ---------------------------------------------------------------- commands
+
+def cmd_up(args) -> None:
+    values = gather_config(read_env())
+    write_env(values)
+    problems = preflight(values)
+    if problems:
+        raise HouseError("Before the house can go up:\n" + "\n".join(f"  - {p}" for p in problems))
+    fetch_sources()
+    say("Building and starting (the first build takes a while) ...")
+    compose(values, "up", "-d", "--build")
+    bp, vp = values["BABELR_PORT"], values["VESSEL_PORT"]
+    wait_healthy(f"http://127.0.0.1:{bp}/health", "Babelr", 300)
+    wait_healthy(f"http://127.0.0.1:{vp}/health", "the vessel", 600)
+    state = load_state()
+    try:
+        state = seed(values, state, Babelr(f"http://127.0.0.1:{bp}"), place_token_in_vessel(values))
+    finally:
+        save_state(state)
+    if not state.get("vessel_restarted"):
+        compose(values, "restart", "vessel")
+        wait_healthy(f"http://127.0.0.1:{vp}/health", "the vessel", 300)
+        state["vessel_restarted"] = True
+        save_state(state)
+    print_welcome(values)
+
+
+def print_welcome(values: dict[str, str]) -> None:
+    say()
+    say(f"The house is up. Open http://localhost:{values['BABELR_PORT']}")
+    say(f"  Log in as {values['OWNER_EMAIL']} with password {values['OWNER_PASSWORD']}")
+    say("  (it's in house.env too; change it in Babelr's settings, then update house.env).")
+    say(f"  {values['DAEMON_NAME']} is @{values['DAEMON_LABEL']}: send a DM, or say @{values['DAEMON_LABEL']} "
+        f"in {values['HOUSE_SERVER']}.")
+    say(f"  {values['DAEMON_NAME']} is new. Nothing carries over from anyone else's daemon, and it runs "
+        "on your API key.")
+    say("  It starts quiet: chat only. ./house status shows the rest.")
+
+
+def cmd_status(args) -> None:
+    values = read_env()
+    if not values:
+        raise HouseError("No house here yet. Run ./house up.")
+    compose(values, "ps")
+    print_welcome(values)
+
+
+def cmd_logs(args) -> None:
+    values = read_env()
+    compose(values, "logs", "--tail", "200", *( [args.service] if args.service else []), check=False)
+
+
+def cmd_down(args) -> None:
+    values = read_env()
+    compose(values, "down")
+
+
+def cmd_nuke(args) -> None:
+    values = read_env()
+    if ask("This deletes your daemon and everything in the house. Type the daemon's name to confirm") \
+            != values.get("DAEMON_NAME"):
+        raise HouseError("Not deleted.")
+    compose(values, "down", "-v")
+    for f in (STATE_FILE,):
+        f.unlink(missing_ok=True)
+    say("Deleted. house.env is kept (your key); delete it yourself if you want.")
+
+
+def main(argv=None) -> None:
+    ap = argparse.ArgumentParser(prog="house", description=__doc__.split("\n\n")[0])
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    sub.add_parser("up")
+    sub.add_parser("status")
+    lp = sub.add_parser("logs")
+    lp.add_argument("service", nargs="?")
+    sub.add_parser("down")
+    sub.add_parser("nuke")
+    args = ap.parse_args(argv)
+    {"up": cmd_up, "status": cmd_status, "logs": cmd_logs, "down": cmd_down, "nuke": cmd_nuke}[args.cmd](args)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        raise SystemExit("\nStopped.")
