@@ -19,6 +19,8 @@ project of its own on ports 13300/18300, nowhere near a live house), and what we
 | **Your key, or someone else's** | **An `ANTHROPIC_API_KEY` exported in the shell silently replaced the one in house.env** | Every compose call gets house.env over the shell |
 | A wrong key | The house built, then every DM failed with a raw 401 | `up` checks the key with Anthropic first (listing models costs nothing) |
 | DMs after `nuke` + `up` | The daemon couldn't encrypt its reply; nothing told the person | Babelr's client publishes its key when the account has none (babelr 8c29614, d02f042) |
+| Babelr's sidebar | "Cass's room", "Cass's record", "Cass's music" in a stranger's house | Hidden unless the vessel behind them is configured (babelr 4f20dfa, the other Daedalus) |
+| Landing | A default "Babelr" server opened first; onboarding asked for a server `up` had made; an intro was claimed with no file | The house home opens first, onboarding skips the server step, `hasIntro` needs the file (babelr 4f20dfa) |
 
 ## Open
 
@@ -26,11 +28,10 @@ project of its own on ports 13300/18300, nowhere near a live house), and what we
   Wonderland). A new house runs with all of them off (`CASS_PROFILE=quiet`). Turning one on in a
   stranger's house today would tell their daemon it's Cass. `tools/prompt_names.py` covers the chat
   prompt only.
-- **Babelr names three plugins after Cass** ("Cass's room", "Cass's record", "Cass's music") in every
-  house's sidebar.
-- **A default "Babelr" server opens first**, not the House server `up` made.
-- **Babelr's onboarding asks you to create a server** even though `up` made one, and its Next button
-  stays disabled until you type a display name.
+- **Babelr's Cass plugins are named for Cass.** They're hidden in a house without Cass's vessel token
+  now (babelr 4f20dfa), but turning them on for another daemon would still say "Cass's room".
+- **Onboarding's Next button** stays disabled until you type a display name, though it shows your
+  username as a placeholder.
 - **The old bundle sticks around:** Babelr is a PWA, so after an upgrade a browser can keep running the
   previous client until its service worker updates.
 - **The daemon's failure text is raw:** "Error code: 401 - {'type': 'error', ...}". It should say what
