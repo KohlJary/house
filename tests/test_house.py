@@ -134,3 +134,22 @@ def test_every_compose_call_uses_that_env(monkeypatch):
     H.compose(v, "ps")
     H.place_token_in_vessel(v)("tok", "sam")
     assert [e["ANTHROPIC_API_KEY"] for e in seen] == ["sk-ant-house", "sk-ant-house"]
+
+
+def test_a_refused_key_stops_up_before_building():
+    import urllib.error
+
+    def refused(req, timeout=None):
+        assert req.get_header("X-api-key") == "sk-ant-bad"
+        raise urllib.error.HTTPError(req.full_url, 401, "Unauthorized", {}, None)
+
+    def offline(req, timeout=None):
+        raise urllib.error.URLError("no network")
+
+    class OK:
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    assert "refused that API key" in H.check_api_key("sk-ant-bad", opener=refused)
+    assert H.check_api_key("sk-ant-x", opener=offline) is None
+    assert H.check_api_key("sk-ant-x", opener=lambda r, timeout=None: OK()) is None

@@ -33,8 +33,13 @@ services:
       NODE_ENV: production
       PORT: 3000
       HOST: 0.0.0.0
+      # The house's intro, if its members have written one (intro/intro.json, the HouseIntro
+      # shape in Babelr's packages/shared/src/types/house.ts). None ships: every line is
+      # written by the member who says it, so a new house starts without one.
+      HOUSE_INTRO_PATH: /house-intro/intro.json
     volumes:
       - uploads:/app/uploads
+      - ./intro:/house-intro:ro
     healthcheck:
       test: ['CMD-SHELL', 'curl -sf http://localhost:3000/health || exit 1']
       interval: 10s
@@ -57,6 +62,7 @@ services:
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:?run ./house up first}
       CASS_DAEMON_LABEL: ${DAEMON_LABEL:?run ./house up first}
       CASS_DAEMON_NAME: ${DAEMON_NAME:?run ./house up first}
+      CASS_HOUSE_PERSON: ${OWNER_USERNAME:?run ./house up first}
       DATA_DIR: /data
       HOST: 0.0.0.0
       PORT: 8000

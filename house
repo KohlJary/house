@@ -142,6 +142,24 @@ def gather_config(existing: dict[str, str], env=os.environ) -> dict[str, str]:
 
 # ---------------------------------------------------------------- preflight
 
+def check_api_key(key: str, opener=urllib.request.urlopen) -> str | None:
+    """Ask Anthropic whether the key works (listing models costs nothing).
+    Returns why it won't do, or None if it works or we couldn't ask."""
+    r = urllib.request.Request("https://api.anthropic.com/v1/models?limit=1",
+                               headers={"x-api-key": key, "anthropic-version": "2023-06-01"})
+    try:
+        with opener(r, timeout=10):
+            return None
+    except urllib.error.HTTPError as e:
+        if e.code in (401, 403):
+            return ("Anthropic refused that API key. Check it at console.anthropic.com and put the right "
+                    "one in house.env as ANTHROPIC_API_KEY.")
+        return None
+    except (urllib.error.URLError, OSError):
+        say("  (Couldn't reach Anthropic to check your API key; going on without checking.)")
+        return None
+
+
 def preflight(values: dict[str, str], run=subprocess.run, which=shutil.which) -> list[str]:
     """Every problem we can see before building, in plain words."""
     problems = []
@@ -350,6 +368,9 @@ def cmd_up(args) -> None:
     values = gather_config(read_env())
     write_env(values)
     problems = preflight(values)
+    why = check_api_key(values["ANTHROPIC_API_KEY"])
+    if why:
+        problems.insert(0, why)
     if problems:
         raise HouseError("Before the house can go up:\n" + "\n".join(f"  - {p}" for p in problems))
     fetch_sources()

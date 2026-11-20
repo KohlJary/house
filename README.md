@@ -40,11 +40,11 @@ Ports 3000 (Babelr) and 8000 (the vessel) are the defaults, bound to localhost o
 
 ## Needs
 
-Linux or macOS with docker and the compose plugin, git, about 6 GB of disk for the images, and an
+Linux (macOS untested) with docker and the compose plugin, git, disk for the images (about 4 GB between them), and an
 Anthropic API key. The first build takes a while (Babelr's client and the vessel's Python
-dependencies); after that, `up` takes seconds.
+dependencies).
 
 ## Status
 
-First cut, 2026-11-20. Tested from a clean clone on Linux (Arch, docker 28). See `KNOWN-GAPS.md` for
-every place we've seen it break, and what we did about it. MIT.
+First cut, 2026-11-20. Tested from a clean clone on Linux (Arch, docker 28.5). See `KNOWN-GAPS.md` for
+every place we've seen it break, and what we did about it. No license yet: that's Kohl's call.
