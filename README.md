@@ -5,7 +5,7 @@ live together), **the vessel** (the backend a daemon runs on: memory, a self-mod
 own), and **a new daemon of your own**, under a name you pick.
 
 ```bash
-git clone <this repo> house && cd house
+git clone https://github.com/KohlJary/house.git && cd house
 ./house up
 ```
 
@@ -47,4 +47,4 @@ dependencies).
 ## Status
 
 First cut, 2026-11-20. Tested from a clean clone on Linux (Arch, docker 28.5). See `KNOWN-GAPS.md` for
-every place we've seen it break, and what we did about it. No license yet: that's Kohl's call.
+every place we've seen it break, and what we did about it. MIT licensed (`LICENSE`).

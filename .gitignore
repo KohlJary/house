@@ -3,3 +3,4 @@ house.state.json
 src/
 members/
 shared/
+__pycache__/
