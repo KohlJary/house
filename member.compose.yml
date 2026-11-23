@@ -42,6 +42,9 @@ services:
       CASS_FEATURE_HOUSE_WIKI: ${CASS_FEATURE_HOUSE_WIKI:-1}
       # A gremlin on every chat reply: off until the house says on.
       CASS_FEATURE_REPLY_GREMLIN: ${CASS_FEATURE_REPLY_GREMLIN:-0}
+      # Her own Bluesky account; credentials go in her data volume (social/config.py).
+      CASS_FEATURE_BLUESKY: ${CASS_FEATURE_BLUESKY:-0}
+      CASS_FEATURE_BLUESKY_DMS: ${CASS_FEATURE_BLUESKY_DMS:-0}
       CASS_FEATURE_SCHEDULER: '0'
       CASS_FEATURE_AUTONOMOUS_SCHEDULING: '0'
       CASS_FEATURE_JOB_GOAL_REFINEMENT: '0'
