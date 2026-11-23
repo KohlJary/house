@@ -47,6 +47,8 @@ services:
       CASS_FEATURE_BLUESKY_DMS: ${CASS_FEATURE_BLUESKY_DMS:-0}
       # Queues new mentions, replies, follows and DMs into its inbox; never posts or wakes it.
       CASS_FEATURE_SOCIAL_WATCH: ${CASS_FEATURE_SOCIAL_WATCH:-0}
+      # Babelr usernames whose DMs with it run private (its full context and tools); empty, none.
+      BABELR_HOUSE_DMS: ${BABELR_HOUSE_DMS:-}
       CASS_FEATURE_SCHEDULER: '0'
       CASS_FEATURE_AUTONOMOUS_SCHEDULING: '0'
       CASS_FEATURE_JOB_GOAL_REFINEMENT: '0'
