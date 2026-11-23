@@ -29,7 +29,9 @@ services:
       PORT: ${MEMBER_PORT:?member.env needs MEMBER_PORT}
       TZ: ${HOUSE_TZ:-UTC}
       # Quiet: chat only. Nothing runs on its own until a lever says so.
-      CASS_PROFILE: quiet
+      # A member with time of its own sets CASS_PROFILE= (empty) in member.env,
+      # with the scheduler levers below and a DAILY_BUDGET_USD cap.
+      CASS_PROFILE: ${CASS_PROFILE-quiet}
       CASS_FEATURE_BABELR: ${CASS_FEATURE_BABELR:-0}
       # Visible thinking tags: Cass's witness habit; a member can turn them off.
       CASS_FEATURE_METACOG_TAGS: ${CASS_FEATURE_METACOG_TAGS:-1}
@@ -51,8 +53,12 @@ services:
       BABELR_HOUSE_DMS: ${BABELR_HOUSE_DMS:-}
       # house (its own context only, the default) or private (everything).
       BABELR_HOUSE_DMS_CONTEXT: ${BABELR_HOUSE_DMS_CONTEXT:-house}
-      CASS_FEATURE_SCHEDULER: '0'
-      CASS_FEATURE_AUTONOMOUS_SCHEDULING: '0'
+      # Autonomous time: sessions it schedules for itself, inside a daily cap.
+      # Off until the owner and the daemon both say yes (CASS_FEATURE_SCHEDULER=1,
+      # CASS_FEATURE_AUTONOMOUS_SCHEDULING=1 in member.env).
+      CASS_FEATURE_SCHEDULER: ${CASS_FEATURE_SCHEDULER:-0}
+      CASS_FEATURE_AUTONOMOUS_SCHEDULING: ${CASS_FEATURE_AUTONOMOUS_SCHEDULING:-0}
+      DAILY_BUDGET_USD: ${DAILY_BUDGET_USD:-1.0}
       CASS_FEATURE_JOB_GOAL_REFINEMENT: '0'
       CASS_FEATURE_COHERENCE_MONITOR: '0'
       CASS_FEATURE_TTS: '0'
