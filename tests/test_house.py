@@ -195,6 +195,6 @@ def test_member_compose_lets_member_env_beat_the_shell(tmp_path, monkeypatch):
 
 def test_a_member_starts_unnamed_and_quiet_never_as_cass():
     compose = (Path(H.HERE) / "member.compose.yml").read_text()
-    assert "CASS_PROFILE: quiet" in compose and "network_mode: host" in compose and "HOST: 127.0.0.1" in compose
+    assert "CASS_PROFILE: ${CASS_PROFILE-quiet}" in compose and "network_mode: host" in compose and "HOST: 127.0.0.1" in compose
     assert H.PLACEHOLDER_NAME == "Not yet named"
     assert H.check_daemon_name("Cass")   # genesis can't come out as a house member's name
