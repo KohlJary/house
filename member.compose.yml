@@ -45,6 +45,8 @@ services:
       # Her own Bluesky account; credentials go in her data volume (social/config.py).
       CASS_FEATURE_BLUESKY: ${CASS_FEATURE_BLUESKY:-0}
       CASS_FEATURE_BLUESKY_DMS: ${CASS_FEATURE_BLUESKY_DMS:-0}
+      # Queues new mentions, replies, follows and DMs into its inbox; never posts or wakes it.
+      CASS_FEATURE_SOCIAL_WATCH: ${CASS_FEATURE_SOCIAL_WATCH:-0}
       CASS_FEATURE_SCHEDULER: '0'
       CASS_FEATURE_AUTONOMOUS_SCHEDULING: '0'
       CASS_FEATURE_JOB_GOAL_REFINEMENT: '0'
