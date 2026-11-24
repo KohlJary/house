@@ -1,0 +1,7 @@
+[Unit]
+Description=The house's copy of Kohl's repos: clone what's new, bring the rest up to date
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 %h/house/tools/house_repos.py sync
