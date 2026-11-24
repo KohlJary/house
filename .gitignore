@@ -4,3 +4,5 @@ src/
 members/
 shared/
 __pycache__/
+repos/
+house-repos.json

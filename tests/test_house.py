@@ -215,6 +215,6 @@ def test_lent_repos_refresh_and_a_stuck_one_is_named(tmp_path):
     assert sorted(Path(c).name for c in calls) == ["babelr", "project-cass"]
 
 
-def test_member_compose_points_reads_inside_the_read_only_member_folder():
+def test_member_compose_lends_the_house_repo_copies_read_only():
     text = (Path(__file__).resolve().parents[1] / "member.compose.yml").read_text()
-    assert "HOUSE_READS_DIR: /member/reads" in text and ":/member:ro" in text
+    assert "HOUSE_READS_DIR: /house-repos" in text and ":/house-repos:ro" in text

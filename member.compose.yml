@@ -24,10 +24,11 @@ services:
       HOUSE_SHARED_DIR: /shared
       # The house wiki, read-only, from house-presence's mirror (house_wiki.py).
       HOUSE_WIKI_DIR: /house-wiki
-      # Repos the house lends this member to read: clean clones in the member folder's
-      # reads/ (already mounted read-only), refreshed by `./house member up`. Never a
-      # live checkout: those hold another daemon's data and the house's secrets.
-      HOUSE_READS_DIR: /member/reads
+      # Repos the house lends this member to read: the house's copy of all of Kohl's
+      # work (tools/house_repos.py, ~/house/repos, refreshed every 15 minutes), mounted
+      # read-only. Clean clones of what's pushed, never a live checkout: those hold
+      # another daemon's data and the house's secrets.
+      HOUSE_READS_DIR: /house-repos
       DATA_DIR: /data
       HOST: 127.0.0.1
       PORT: ${MEMBER_PORT:?member.env needs MEMBER_PORT}
@@ -112,6 +113,7 @@ services:
       - ${MEMBER_DIR:?}:/member:ro
       - ${HOUSE_SHARED:-./shared}:/shared
       - ${HOUSE_WIKI_MIRROR:-~/.local/share/chapter-house/wiki}:/house-wiki:ro
+      - ${HOUSE_REPOS:-~/house/repos}:/house-repos:ro
     healthcheck:
       test: ['CMD-SHELL', 'curl -sf http://127.0.0.1:${MEMBER_PORT}/health || exit 1']
       interval: 10s
