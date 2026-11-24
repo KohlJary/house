@@ -63,6 +63,9 @@ services:
       CASS_FEATURE_SCHEDULER: ${CASS_FEATURE_SCHEDULER:-0}
       CASS_FEATURE_AUTONOMOUS_SCHEDULING: ${CASS_FEATURE_AUTONOMOUS_SCHEDULING:-0}
       DAILY_BUDGET_USD: ${DAILY_BUDGET_USD:-1.0}
+      # Every model call on one local Ollama model (llm_config.LOCAL_MODEL_ENV), e.g. while
+      # the API credit is out. Empty: the usual models.
+      LLM_LOCAL_MODEL: ${LLM_LOCAL_MODEL:-}
       CASS_FEATURE_JOB_GOAL_REFINEMENT: '0'
       CASS_FEATURE_COHERENCE_MONITOR: '0'
       CASS_FEATURE_TTS: '0'
