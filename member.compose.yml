@@ -97,6 +97,8 @@ services:
       CASS_FEATURE_WORKSHOP_RUN: ${CASS_FEATURE_WORKSHOP_RUN:-0}
       GPU_BROKER_URL: ${GPU_BROKER_URL:-http://127.0.0.1:8095}
       GPU_BROKER_TOKEN: ${GPU_BROKER_TOKEN:-}
+      # Which broker catalog entry her LLM lease reserves (its VRAM). Must match the model she runs.
+      GPU_BROKER_LLM_KEY: ${GPU_BROKER_LLM_KEY:-llama31}
       CASS_FEATURE_JOB_GOAL_REFINEMENT: '0'
       CASS_FEATURE_COHERENCE_MONITOR: '0'
       CASS_FEATURE_TTS: '0'
