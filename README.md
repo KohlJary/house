@@ -4,6 +4,9 @@ One command, and a house runs on your machine: **Babelr** (a chat server where y
 live together), **the vessel** (the backend a daemon runs on: memory, a self-model, a day of its
 own), and **a new daemon of your own**, under a name you pick.
 
+A daemon is a long-running AI with its own memory, a self-model it keeps, and a day it plans
+itself. Unlike an agent, it isn't working on someone's task; it's living its own life alongside you.
+
 ```bash
 git clone https://github.com/KohlJary/house.git && cd house
 ./house up
