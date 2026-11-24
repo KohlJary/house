@@ -489,6 +489,21 @@ def save_member(slug: str, values: dict[str, str]) -> None:
     write_env(keep, d / "member.env")
 
 
+def refresh_reads(d: Path, run=subprocess.run) -> list[str]:
+    """Bring each repo lent to a member (members/<slug>/reads/<repo>) up to date.
+    A clone that won't fast-forward is left as it is and named."""
+    stuck = []
+    reads = d / "reads"
+    for repo in sorted(reads.iterdir()) if reads.is_dir() else []:
+        if (repo / ".git").exists():
+            r = run(["git", "-C", str(repo), "pull", "-q", "--ff-only"], capture_output=True, text=True)
+            if r.returncode != 0:
+                stuck.append(repo.name)
+    if stuck:
+        say(f"Couldn't update lent repos: {', '.join(stuck)} (left as they were).")
+    return stuck
+
+
 def cmd_member_up(args) -> None:
     d = member_dir(args.slug)
     env = d / "member.env"
@@ -508,6 +523,7 @@ def cmd_member_up(args) -> None:
         save_member(args.slug, values)
         values = member_values(args.slug)
     fetch_sources()
+    refresh_reads(d)
     say(f"Starting member {args.slug} on 127.0.0.1:{values['MEMBER_PORT']} (quiet: chat only).")
     member_compose(values, "up", "-d", "--build")
     wait_healthy(f"http://127.0.0.1:{values['MEMBER_PORT']}/health", f"member {args.slug}", 600)

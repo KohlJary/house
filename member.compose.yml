@@ -24,6 +24,10 @@ services:
       HOUSE_SHARED_DIR: /shared
       # The house wiki, read-only, from house-presence's mirror (house_wiki.py).
       HOUSE_WIKI_DIR: /house-wiki
+      # Repos the house lends this member to read: clean clones in the member folder's
+      # reads/ (already mounted read-only), refreshed by `./house member up`. Never a
+      # live checkout: those hold another daemon's data and the house's secrets.
+      HOUSE_READS_DIR: /member/reads
       DATA_DIR: /data
       HOST: 127.0.0.1
       PORT: ${MEMBER_PORT:?member.env needs MEMBER_PORT}

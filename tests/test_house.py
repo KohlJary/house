@@ -198,3 +198,23 @@ def test_a_member_starts_unnamed_and_quiet_never_as_cass():
     assert "CASS_PROFILE: ${CASS_PROFILE-quiet}" in compose and "network_mode: host" in compose and "HOST: 127.0.0.1" in compose
     assert H.PLACEHOLDER_NAME == "Not yet named"
     assert H.check_daemon_name("Cass")   # genesis can't come out as a house member's name
+
+
+def test_lent_repos_refresh_and_a_stuck_one_is_named(tmp_path):
+    reads = tmp_path / "reads"
+    (reads / "project-cass" / ".git").mkdir(parents=True)
+    (reads / "babelr" / ".git").mkdir(parents=True)
+    (reads / "not-a-repo").mkdir()
+    calls = []
+
+    def run(cmd, **kw):
+        calls.append(cmd[2])
+        return subprocess.CompletedProcess(cmd, 1 if "babelr" in cmd[2] else 0, "", "")
+
+    assert H.refresh_reads(tmp_path, run=run) == ["babelr"]
+    assert sorted(Path(c).name for c in calls) == ["babelr", "project-cass"]
+
+
+def test_member_compose_points_reads_inside_the_read_only_member_folder():
+    text = (Path(__file__).resolve().parents[1] / "member.compose.yml").read_text()
+    assert "HOUSE_READS_DIR: /member/reads" in text and ":/member:ro" in text
