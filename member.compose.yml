@@ -67,6 +67,15 @@ services:
       # Every model call on one local Ollama model (llm_config.LOCAL_MODEL_ENV), e.g. while
       # the API credit is out. Empty: the usual models.
       LLM_LOCAL_MODEL: ${LLM_LOCAL_MODEL:-}
+      # Her model, her call (Kohl, 2026-11-24): a trial is these lines in member.env,
+      # the decision is her pin in the vessel's config.RESIDENT_MODEL_PINS. Unset
+      # means her pin, else the house default. LLM_LOCAL_MODEL, when set, still wins.
+      CASS_CHAT_MODEL: ${CASS_CHAT_MODEL:-}
+      CASS_INTERNAL_MODEL: ${CASS_INTERNAL_MODEL:-}
+      CASS_MODEL_EFFORT: ${CASS_MODEL_EFFORT:-}
+      # Native 5.x thinking: show it in her tags / keep it for her. Off until she says yes.
+      CASS_SHOW_THINKING: ${CASS_SHOW_THINKING:-}
+      CASS_KEEP_THINKING: ${CASS_KEEP_THINKING:-}
       # In local mode, the call sites that get no model (comma-separated). Unset: the
       # vessel's default, which pauses self-model writers ("none" skips nothing). A daemon who agreed to have
       # local-mode changes reviewed afterwards runs with just capability.summary here.
