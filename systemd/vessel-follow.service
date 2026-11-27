@@ -1,0 +1,8 @@
+[Unit]
+Description=Bring the house members up to the vessel's main (waits for Kohl on schema changes)
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 %h/house/tools/vessel_follow.py
+TimeoutStartSec=20min
